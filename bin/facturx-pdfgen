@@ -29,6 +29,11 @@ options = [
         "using autodetection, you will win a very small amount of time "
         "(less than 1 millisecond). "
         "Possible values: minimum, basicwl, basic, en16931."},
+    {'names': ('-z', '--zugferd'), 'dest': 'zugferd',
+        'action': 'store', 'default': False,
+        'help': "Generate ZUGfERD invoice instead of Factur-X "
+        "Can be either 1 or 2 to generate ZUGfERD 1 or 2 invoices "
+        "this changes only the filename of the embedded xml file " },
     {'names': ('-a', '--meta-author'), 'dest': 'meta_author',
         'action': 'store', 'default': False,
         'help': "Specify the author for PDF metadata. Default: use the vendor "
@@ -94,6 +99,14 @@ def main(options, arguments):
     if options.disable_xsd_check:
         check_xsd = False
     pdf_metadata = None
+
+    specification = 'factur-x'
+
+    if options.zugferd == '1':
+        specification = 'zugferd1'
+    elif options.zugferd == '2':
+        specification = 'zugferd2'
+
     if (
             options.meta_author or
             options.meta_keywords or
@@ -121,7 +134,9 @@ def main(options, arguments):
         # The important line of code is below !
         generate_facturx_from_file(
             pdf_filename, xml_file, check_xsd=check_xsd,
-            facturx_level=options.facturx_level, pdf_metadata=pdf_metadata,
+            facturx_level=options.facturx_level,
+            specification=specification,
+            pdf_metadata=pdf_metadata,
             output_pdf_file=facturx_pdf_filename,
             additional_attachments=additional_attachments)
     except Exception as e:

@@ -54,6 +54,13 @@ logging.basicConfig(format=FORMAT)
 logger = logging.getLogger('factur-x')
 logger.setLevel(logging.INFO)
 
+
+XML_FILENAMES = {
+    'factur-x': 'factur-x.xml',
+    'zugferd1': 'ZUGFeRD-invoice.xml',
+    'zugferd2': 'zugferd-invoice.xml'
+}
+
 FACTURX_FILENAME = 'factur-x.xml'
 ZUGFERD_FILENAMES = ['zugferd-invoice.xml', 'ZUGFeRD-invoice.xml']
 FACTURX_LEVEL2xsd = {
@@ -69,6 +76,7 @@ FACTURX_LEVEL2xmp = {
     'basic': 'BASIC',
     'en16931': 'EN 16931',
     'extended': 'EXTENDED',
+    'comfort': 'COMFORT'
     }
 
 
@@ -329,7 +337,7 @@ def _prepare_pdf_metadata_txt(pdf_metadata):
     return info_dict
 
 
-def _prepare_pdf_metadata_xml(facturx_level, pdf_metadata):
+def _prepare_pdf_metadata_xml(facturx_level, pdf_metadata, specification='factur-x'):
     xml_str = """
 <?xpacket begin="\ufeff" id="W5M0MpCehiHzreSzNTczkc9d"?>
 <x:xmpmeta xmlns:x="adobe:ns:meta/">
@@ -367,9 +375,9 @@ def _prepare_pdf_metadata_xml(facturx_level, pdf_metadata):
       <pdfaExtension:schemas>
         <rdf:Bag>
           <rdf:li rdf:parseType="Resource">
-            <pdfaSchema:schema>Factur-X PDFA Extension Schema</pdfaSchema:schema>
-            <pdfaSchema:namespaceURI>urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#</pdfaSchema:namespaceURI>
-            <pdfaSchema:prefix>fx</pdfaSchema:prefix>
+            <pdfaSchema:schema>{extension_schema}</pdfaSchema:schema>
+            <pdfaSchema:namespaceURI>{namespace_uri}</pdfaSchema:namespaceURI>
+            <pdfaSchema:prefix>{schema_prefix}</pdfaSchema:prefix>
             <pdfaSchema:property>
               <rdf:Seq>
                 <rdf:li rdf:parseType="Resource">
@@ -402,16 +410,30 @@ def _prepare_pdf_metadata_xml(facturx_level, pdf_metadata):
         </rdf:Bag>
       </pdfaExtension:schemas>
     </rdf:Description>
-    <rdf:Description xmlns:fx="urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#" rdf:about="">
-      <fx:DocumentType>{facturx_documenttype}</fx:DocumentType>
-      <fx:DocumentFileName>{facturx_filename}</fx:DocumentFileName>
-      <fx:Version>{facturx_version}</fx:Version>
-      <fx:ConformanceLevel>{facturx_level}</fx:ConformanceLevel>
+    <rdf:Description xmlns:fx="{namespace_uri}" rdf:about="">
+      <{schema_prefix}:DocumentType>{facturx_documenttype}</fx:DocumentType>
+      <{schema_prefix}:DocumentFileName>{facturx_filename}</fx:DocumentFileName>
+      <{schema_prefix}:Version>{facturx_version}</fx:Version>
+      <{schema_prefix}:ConformanceLevel>{facturx_level}</fx:ConformanceLevel>
     </rdf:Description>
   </rdf:RDF>
 </x:xmpmeta>
 <?xpacket end="w"?>
 """
+
+    extension_schema = 'Factur-X PDFA Extension Schema'
+    namespace_uri = 'urn:factur-x:pdfa:CrossIndustryDocument:invoice:1p0#'
+    version = '1.0'
+    schema_prefix = 'fx'
+    if (specification == 'zugferd1') or (specification == 'zugferd2'):
+        extension_schema = 'ZUGFeRD PDFA Extension Schema'
+    if specification == 'zugferd1':
+        namespace_uri = 'urn:zugferd:pdfa:CrossIndustryDocument:invoice:1p0#'
+        schema_prefix = 'zf'
+    elif specification == 'zugferd2':
+        namespace_uri = 'urn:zugferd:pdfa:CrossIndustryDocument:invoice:2p0#'
+        version = '2p0'
+
     xml_str = xml_str.format(
         title=pdf_metadata.get('title', ''),
         author=pdf_metadata.get('author', ''),
@@ -420,9 +442,12 @@ def _prepare_pdf_metadata_xml(facturx_level, pdf_metadata):
         creator_tool='factur-x python lib v%s by Alexis de Lattre' % __version__,
         timestamp=_get_metadata_timestamp(),
         facturx_documenttype='INVOICE',
-        facturx_filename=FACTURX_FILENAME,
-        facturx_version='1.0',
-        facturx_level=FACTURX_LEVEL2xmp[facturx_level])
+        facturx_filename=XML_FILENAMES[specification],
+        facturx_version=version,
+        facturx_level=FACTURX_LEVEL2xmp[facturx_level],
+        extension_schema=extension_schema,
+        namespace_uri=namespace_uri,
+        schema_prefix=schema_prefix)
     xml_byte = xml_str.encode('utf-8')
     logger.debug('metadata XML:')
     logger.debug(xml_byte)
@@ -477,7 +502,7 @@ def _filespec_additional_attachments(
 
 def _facturx_update_metadata_add_attachment(
         pdf_filestream, facturx_xml_str, pdf_metadata, facturx_level,
-        output_intents=[], additional_attachments={}):
+        output_intents=[], additional_attachments={}, specification='factur-x'):
     '''This method is inspired from the code of the addAttachment()
     method of the PyPDF2 lib'''
     # The entry for the file
@@ -504,7 +529,7 @@ def _facturx_update_metadata_add_attachment(
         NameObject('/UF'): file_entry_obj,
         })
 
-    fname_obj = createStringObject(FACTURX_FILENAME)
+    fname_obj = createStringObject(XML_FILENAMES[specification])
     filespec_dict = DictionaryObject({
         NameObject("/AFRelationship"): NameObject("/Data"),
         NameObject("/Desc"): createStringObject("Factur-X Invoice"),
@@ -548,7 +573,7 @@ def _facturx_update_metadata_add_attachment(
         output_intent_obj = pdf_filestream._addObject(output_intent_dict)
         res_output_intents.append(output_intent_obj)
     # Update the root
-    metadata_xml_str = _prepare_pdf_metadata_xml(facturx_level, pdf_metadata)
+    metadata_xml_str = _prepare_pdf_metadata_xml(facturx_level, pdf_metadata, specification=specification)
     metadata_file_entry = DecodedStreamObject()
     metadata_file_entry.setData(metadata_xml_str)
     metadata_file_entry.update({
@@ -574,21 +599,51 @@ def _facturx_update_metadata_add_attachment(
 
 
 def _extract_base_info(facturx_xml_etree):
+
+
+
+
     namespaces = facturx_xml_etree.nsmap
     date_xpath = facturx_xml_etree.xpath(
         '//rsm:ExchangedDocument/ram:IssueDateTime/udt:DateTimeString',
         namespaces=namespaces)
+
+    if len(date_xpath) == 0:
+        # try zugferd
+        date_xpath = facturx_xml_etree.xpath(
+            '//rsm:HeaderExchangedDocument/ram:IssueDateTime/udt:DateTimeString',
+            namespaces=namespaces)
+
     date = date_xpath[0].text
+
+
     date_dt = datetime.strptime(date, '%Y%m%d')
     inv_num_xpath = facturx_xml_etree.xpath(
         '//rsm:ExchangedDocument/ram:ID', namespaces=namespaces)
+
+    if len(inv_num_xpath) == 0:
+        inv_num_xpath = facturx_xml_etree.xpath(
+            '//rsm:HeaderExchangedDocument/ram:ID', namespaces=namespaces)
+
     inv_num = inv_num_xpath[0].text
+    logger.debug("Got num")
+
     seller_xpath = facturx_xml_etree.xpath(
         '//ram:ApplicableHeaderTradeAgreement/ram:SellerTradeParty/ram:Name',
         namespaces=namespaces)
+
+    if len(seller_xpath) == 0:
+        seller_xpath = facturx_xml_etree.xpath(
+            '//ram:ApplicableSupplyChainTradeAgreement/ram:SellerTradeParty/ram:Name',
+            namespaces=namespaces)
+
     seller = seller_xpath[0].text
     doc_type_xpath = facturx_xml_etree.xpath(
         '//rsm:ExchangedDocument/ram:TypeCode', namespaces=namespaces)
+    if len(doc_type_xpath) == 0:
+        doc_type_xpath = facturx_xml_etree.xpath(
+            '//rsm:HeaderExchangedDocument/ram:TypeCode', namespaces=namespaces)
+
     doc_type = doc_type_xpath[0].text
     base_info = {
         'seller': seller,
@@ -624,10 +679,18 @@ def get_facturx_level(facturx_xml_etree):
     if not isinstance(facturx_xml_etree, type(etree.Element('pouet'))):
         raise ValueError('facturx_xml_etree must be an etree.Element() object')
     namespaces = facturx_xml_etree.nsmap
+
+
     doc_id_xpath = facturx_xml_etree.xpath(
         "//rsm:ExchangedDocumentContext"
         "/ram:GuidelineSpecifiedDocumentContextParameter"
         "/ram:ID", namespaces=namespaces)
+    if not doc_id_xpath:
+        doc_id_xpath = facturx_xml_etree.xpath(
+            "//rsm:SpecifiedExchangedDocumentContext"
+            "/ram:GuidelineSpecifiedDocumentContextParameter"
+            "/ram:ID", namespaces=namespaces)
+
     if not doc_id_xpath:
         raise ValueError(
             "This XML is not a Factur-X XML because it misses the XML tag "
@@ -679,6 +742,7 @@ def _get_original_output_intents(original_pdf):
 
 def generate_facturx_from_binary(
         pdf_invoice, facturx_xml, facturx_level='autodetect',
+        specification='factur-x',
         check_xsd=True, pdf_metadata=None):
     """
     Generate a Factur-X invoice from a regular PDF invoice and a factur-X XML
@@ -733,6 +797,7 @@ def generate_facturx_from_binary(
 
 def generate_facturx_from_file(
         pdf_invoice, facturx_xml, facturx_level='autodetect',
+        specification='factur-x',
         check_xsd=True, pdf_metadata=None, output_pdf_file=None,
         additional_attachments=None):
     """
@@ -787,6 +852,7 @@ def generate_facturx_from_file(
     logger.debug('optional arg facturx_level=%s', facturx_level)
     logger.debug('optional arg check_xsd=%s', check_xsd)
     logger.debug('optional arg pdf_metadata=%s', pdf_metadata)
+    logger.debug('optional arg specification=%s', specification)
     logger.debug(
         'optional arg additional_attachments=%s', additional_attachments)
     if not pdf_invoice:
@@ -844,16 +910,23 @@ def generate_facturx_from_file(
                     'mod_date': mod_dt,
                     }
                 fa.close()
+
+    logger.debug("Made it this far")
+
     if pdf_metadata is None:
         if xml_root is None:
             xml_root = etree.fromstring(xml_string)
         base_info = _extract_base_info(xml_root)
+
+        logger.debug("HERE?")
+
         pdf_metadata = _base_info2pdf_metadata(base_info)
     else:
         # clean-up pdf_metadata dict
         for key, value in pdf_metadata.items():
             if not isinstance(value, (str, unicode)):
                 pdf_metadata[key] = ''
+
     facturx_level = facturx_level.lower()
     if facturx_level not in FACTURX_LEVEL2xsd:
         if xml_root is None:
@@ -861,8 +934,9 @@ def generate_facturx_from_file(
         logger.debug('Factur-X level will be autodetected')
         facturx_level = get_facturx_level(xml_root)
     if check_xsd:
+        facturx_flavor = get_facturx_flavor(xml_root)
         check_facturx_xsd(
-            xml_string, flavor='factur-x', facturx_level=facturx_level)
+            xml_string, flavor=facturx_flavor, facturx_level=facturx_level)
     original_pdf = PdfFileReader(pdf_invoice)
     # Extract /OutputIntents obj from original invoice
     output_intents = _get_original_output_intents(original_pdf)
@@ -878,7 +952,8 @@ def generate_facturx_from_file(
     _facturx_update_metadata_add_attachment(
         new_pdf_filestream, xml_string, pdf_metadata, facturx_level,
         output_intents=output_intents,
-        additional_attachments=additional_attachments_read)
+        additional_attachments=additional_attachments_read,
+        specification=specification)
     if output_pdf_file:
         with open(output_pdf_file, 'wb') as output_f:
             new_pdf_filestream.write(output_f)
@@ -890,7 +965,7 @@ def generate_facturx_from_file(
                 f.close()
         elif file_type == 'file':
             new_pdf_filestream.write(pdf_invoice)
-    logger.info('%s file added to PDF invoice', FACTURX_FILENAME)
+    logger.info('%s file added to PDF invoice', XML_FILENAMES[specification])
     end_chrono = datetime.now()
     logger.info(
         'Factur-X invoice generated in %s seconds',
