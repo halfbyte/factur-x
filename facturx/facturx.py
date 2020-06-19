@@ -61,6 +61,12 @@ XML_FILENAMES = {
     'zugferd2': 'zugferd-invoice.xml'
 }
 
+FILE_DESCRIPTIONS = {
+    'factur-x': 'Factur-X Invoice',
+    'zugferd1': 'ZUGFeRD Rechnung',
+    'zugferd2': 'ZUGFeRD Rechnung'
+}
+
 FACTURX_FILENAME = 'factur-x.xml'
 ZUGFERD_FILENAMES = ['zugferd-invoice.xml', 'ZUGFeRD-invoice.xml']
 FACTURX_LEVEL2xsd = {
@@ -488,6 +494,8 @@ def _filespec_additional_attachments(
         NameObject("/F"): file_entry_obj,
         })
     fname_obj = createStringObject(filename)
+
+    logger.debug('_filespec_description=%s', file_dict.get('desc', ''))
     filespec_dict = DictionaryObject({
         NameObject("/AFRelationship"): NameObject("/Unspecified"),
         NameObject("/Desc"): createStringObject(file_dict.get('desc', '')),
@@ -530,9 +538,14 @@ def _facturx_update_metadata_add_attachment(
         })
 
     fname_obj = createStringObject(XML_FILENAMES[specification])
+
+    rel_obj = NameObject("/Data")
+    if (specification == "zugferd1" or specification == "zugferd2"):
+        rel_obj = NameObject("/Alternative")
+
     filespec_dict = DictionaryObject({
-        NameObject("/AFRelationship"): NameObject("/Data"),
-        NameObject("/Desc"): createStringObject("Factur-X Invoice"),
+        NameObject("/AFRelationship"): rel_obj,
+        NameObject("/Desc"): createStringObject(FILE_DESCRIPTIONS[specification]),
         NameObject("/Type"): NameObject("/Filespec"),
         NameObject("/F"): fname_obj,
         NameObject("/EF"): ef_dict,
